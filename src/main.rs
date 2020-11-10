@@ -38,5 +38,7 @@ fn main() {
 
         ::std::process::exit(1);
     }
+
+    rosrust::ros_info!("Exiting...");
 }
 

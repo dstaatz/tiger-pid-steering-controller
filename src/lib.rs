@@ -9,39 +9,59 @@ extern crate error_chain;
 
 mod errors;
 mod srv;
+mod steering;
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
 
-use rosrust_msg::std_msgs;
+use rosrust_msg::std_msgs::Float64;
+use rosrust_msg::geometry_msgs::PoseWithCovarianceStamped;
 
 use errors::*;
 
 
 pub fn run() -> Result<()> {
 
-    let _path1 = srv::get_static_map()?;
-    let _path2 = srv::get_static_path()?;
+    let path = srv::get_static_path()?;
+
+    // Get parameters
+    let pid_constants = steering::PidConstants {
+        kp: rosrust::param("~kp").unwrap().get()?,
+        ki: rosrust::param("~ki").unwrap().get()?,
+        kd: rosrust::param("~kd").unwrap().get()?,
+        p_limit: rosrust::param("~p_limit").unwrap().get()?,
+        i_limit: rosrust::param("~i_limit").unwrap().get()?,
+        d_limit: rosrust::param("~d_limit").unwrap().get()?,
+    };
+
+    let speed: f64 = rosrust::param("~speed").unwrap().get()?;
+    let speed = Float64 { data: speed };
+
+    // Setup controller
+    let controller = steering::SteeringPidController::new(path, pid_constants);
 
     // Create publishers
     let drivetrain_pub = rosrust::publish("/tiger_car/control/drivetrain", 100)?;
     let steering_pub = rosrust::publish("/tiger_car/control/steering", 100)?;
 
-    // Create object that maintains 10Hz between sleep requests
-    let rate = rosrust::rate(10.0);
+    // Register Subscriber
+    rosrust::subscribe(
+        "amcl_pose",
+        100,
+        move |pose: PoseWithCovarianceStamped| {
+            
+            rosrust::ros_info!("Pose Received: {:?}", pose);
+            
+            let steering = controller.update(pose);
+
+            drivetrain_pub.send(speed.clone()).unwrap();
+            steering_pub.send(steering).unwrap();
+        }
+    )?;
 
     // Breaks when a shutdown signal is sent
-    while rosrust::is_ok() {
-
-        let zero = std_msgs::Float64 { data: 0.0 };
-
-        drivetrain_pub.send(zero.clone())?;
-        steering_pub.send(zero)?;
-
-        // Sleep to maintain rate
-        rate.sleep();
-    }
+    rosrust::spin();
 
     Ok(())
 }

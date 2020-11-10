@@ -11,4 +11,5 @@ rosrust = "0.9"
 rosrust_msg = "0.1"
 env_logger = "0.7.1"
 error-chain = "0.12.1"
+pid = "2.1.0"
 
