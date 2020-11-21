@@ -31,11 +31,11 @@ pub fn run() -> Result<()> {
 
     // Get parameters
     let pid_constants = PidConstants {
-        kp: 7.0,
+        kp: 5.0,
         ki: 0.0,
-        kd: 35.0,
+        kd: 15.0,
         p_limit: 5.0,
-        i_limit: 0.0,
+        i_limit: 0.5,
         d_limit: 5.0,
     };
 
@@ -44,6 +44,7 @@ pub fn run() -> Result<()> {
 
     // Setup publisher
     let steering_pub = rosrust::publish("/tiger_car/steer", 100)?;
+    let next_pub = rosrust::publish("/next_point", 100)?;
 
     // Listen for transforms
     let listener = TfListener::new();
@@ -65,6 +66,9 @@ pub fn run() -> Result<()> {
     
                 // Determine new output from controller
                 let output = controller.update_tf(tf);
+
+                // Publish next goal location
+                next_pub.send(controller.next_point())?;
     
                 // Publish new control output
                 steering_pub.send(output)?;

@@ -39,6 +39,11 @@ impl SteeringPidController {
         self.update_pose(pose)
     }
 
+    /// Return the next goal point
+    pub fn next_point(&self) -> PoseStamped {
+        self.path.poses[self.next_idx].clone()
+    }
+
     /// Does what it says
     fn convert_tf_to_pose(tf: TransformStamped) -> PoseStamped {
         PoseStamped {
