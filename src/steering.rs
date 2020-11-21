@@ -145,13 +145,13 @@ impl SteeringPidController {
         // Determine the magnitude of the height with points A and B as the base
         let h = side_b * f64::sin(angle_a);
 
-        let dir = if Self::direction_pose(pair, pose) { 1.0 } else { -1.0 };
+        let dir = if Self::direction_pose(pair, pose) { -1.0 } else { 1.0 };
 
         Some(dir*h)
     }
 
     /// Using RHR, if the point are in the order A, B, C, then the output shold be true
-    /// (i.e. the car is turning left)
+    /// (i.e. point C is left of point B from the perspective of point A)
     fn direction_pose(pair: (&PoseStamped, &PoseStamped), pose: &PoseStamped) -> bool {
 
         // Define points
@@ -164,8 +164,8 @@ impl SteeringPidController {
         let c = (c.0 - a.0, c.1 - a.1);
 
         // Find the angles that b and c make with the x-axis
-        let theta_b = f64::asin(b.1 / Self::calc_distance_point((0.0,0.0), b));
-        let theta_c = f64::asin(c.1 / Self::calc_distance_point((0.0,0.0), c));
+        let theta_b = f64::atan2(b.1, b.0);
+        let theta_c = f64::atan2(c.1, c.0);
 
         // Compare angles to determine the order
         // Add PI/2 to theta_b so we can reuse code from speed controller
@@ -239,10 +239,86 @@ impl SteeringPidController {
 mod tests {
 
     use super::*;
+    use super::SteeringPidController as crtl;
 
     #[test]
-    fn test_() {
-        unimplemented!();
+    fn test_direction_pose() {
+        
+        let v = vec![
+            //a_x, a_y    b_x, b_y    c_x, c_y       ans
+            ((0.0, 0.0), (0.0, 0.0), (1.0, 0.0),    true),
+            ((0.0, 0.0), (0.0, 0.0), (1.0, 1.0),    true),
+            ((0.0, 0.0), (0.0, 0.0), (0.0, 1.0),    true),
+            ((0.0, 0.0), (0.0, 0.0), (-1.0, 1.0),   true),
+            ((0.0, 0.0), (0.0, 0.0), (-1.0, 0.0),   true),
+            ((0.0, 0.0), (0.0, 0.0), (-1.0, -1.0),  true),
+            ((0.0, 0.0), (0.0, 0.0), (0.0, -1.0),   true),
+            ((0.0, 0.0), (0.0, 0.0), (1.0, -1.0),   true),
+
+            ((0.0, 0.0), (1.0, 0.0), (1.0, 0.0),    true),
+            ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0),    true),
+            ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0),    true),
+            ((0.0, 0.0), (1.0, 0.0), (-1.0, 1.0),   true),
+            ((0.0, 0.0), (1.0, 0.0), (-1.0, 0.0),   true),
+            ((0.0, 0.0), (1.0, 0.0), (-1.0, -1.0),  false),
+            ((0.0, 0.0), (1.0, 0.0), (0.0, -1.0),   false),
+            ((0.0, 0.0), (1.0, 0.0), (1.0, -1.0),   false),
+
+            ((0.0, 0.0), (1.0, 1.0), (1.0, 0.0),    false),
+            ((0.0, 0.0), (1.0, 1.0), (1.0, 1.0),    true),
+            ((0.0, 0.0), (1.0, 1.0), (0.0, 1.0),    true),
+            ((0.0, 0.0), (1.0, 1.0), (-1.0, 1.0),   true),
+            ((0.0, 0.0), (1.0, 1.0), (-1.0, 0.0),   true),
+            ((0.0, 0.0), (1.0, 1.0), (-1.0, -1.0),  true),
+            ((0.0, 0.0), (1.0, 1.0), (0.0, -1.0),   false),
+            ((0.0, 0.0), (1.0, 1.0), (1.0, -1.0),   false),
+
+            ((0.0, 0.0), (-1.0, 1.0), (1.0, 0.0),    false),
+            ((0.0, 0.0), (-1.0, 1.0), (1.0, 1.0),    false),
+            ((0.0, 0.0), (-1.0, 1.0), (0.0, 1.0),    false),
+            ((0.0, 0.0), (-1.0, 1.0), (-1.0, 1.0),   true),
+            ((0.0, 0.0), (-1.0, 1.0), (-1.0, 0.0),   true),
+            ((0.0, 0.0), (-1.0, 1.0), (-1.0, -1.0),  true),
+            ((0.0, 0.0), (-1.0, 1.0), (0.0, -1.0),   true),
+            ((0.0, 0.0), (-1.0, 1.0), (1.0, -1.0),   true),
+
+            ((0.0, 0.0), (-1.0, -1.0), (1.0, 0.0),    true),
+            ((0.0, 0.0), (-1.0, -1.0), (1.0, 1.0),    true),
+            ((0.0, 0.0), (-1.0, -1.0), (0.0, 1.0),    false),
+            ((0.0, 0.0), (-1.0, -1.0), (-1.0, 1.0),   false),
+            ((0.0, 0.0), (-1.0, -1.0), (-1.0, 0.0),   false),
+            ((0.0, 0.0), (-1.0, -1.0), (-1.0, -1.0),  true),
+            ((0.0, 0.0), (-1.0, -1.0), (0.0, -1.0),   true),
+            ((0.0, 0.0), (-1.0, -1.0), (1.0, -1.0),   true),
+
+            ((0.0, 0.0), (1.0, -1.0), (1.0, 0.0),    true),
+            ((0.0, 0.0), (1.0, -1.0), (1.0, 1.0),    true),
+            ((0.0, 0.0), (1.0, -1.0), (0.0, 1.0),    true),
+            ((0.0, 0.0), (1.0, -1.0), (-1.0, 1.0),   true),
+            ((0.0, 0.0), (1.0, -1.0), (-1.0, 0.0),   false),
+            ((0.0, 0.0), (1.0, -1.0), (-1.0, -1.0),  false),
+            ((0.0, 0.0), (1.0, -1.0), (0.0, -1.0),   false),
+            ((0.0, 0.0), (1.0, -1.0), (1.0, -1.0),   true),
+        ];
+
+        let v: Vec<(PoseStamped, PoseStamped, PoseStamped, bool)> = v
+            .into_iter()
+            .map(|((a_x, a_y), (b_x, b_y), (c_x, c_y), ans)| {
+                let mut a = PoseStamped::default();
+                a.pose.position.x = a_x;
+                a.pose.position.y = a_y;
+                let mut b = PoseStamped::default();
+                b.pose.position.x = b_x;
+                b.pose.position.y = b_y;
+                let mut c = PoseStamped::default();
+                c.pose.position.x = c_x;
+                c.pose.position.y = c_y;
+                (a, b, c, ans)
+            }).collect();
+
+        for t in v {
+            assert_eq!(crtl::direction_pose((&t.0, &t.1), &t.2), t.3);
+        }
     }
 }
 
