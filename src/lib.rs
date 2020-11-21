@@ -15,10 +15,15 @@ mod steering;
 ////////////////////////////////////////////////////////////////////////////////
 
 
+use rosrust::Time;
 use rosrust_msg::std_msgs::Float64;
 use rosrust_msg::geometry_msgs::PoseWithCovarianceStamped;
+use rustros_tf::TfListener;
+use rustros_tf::msg::std_msgs::Header;
+use rustros_tf::msg::geometry_msgs::TransformStamped;
 
 use errors::*;
+use steering::{SteeringPidController, PidConstants};
 
 
 pub fn run() -> Result<()> {
@@ -26,39 +31,48 @@ pub fn run() -> Result<()> {
     let path = srv::get_static_path()?;
 
     // Get parameters
-    let pid_constants = steering::PidConstants {
-        kp: rosrust::param("~kp").unwrap().get()?,
-        ki: rosrust::param("~ki").unwrap().get()?,
-        kd: rosrust::param("~kd").unwrap().get()?,
-        p_limit: rosrust::param("~p_limit").unwrap().get()?,
-        i_limit: rosrust::param("~i_limit").unwrap().get()?,
-        d_limit: rosrust::param("~d_limit").unwrap().get()?,
+    let pid_constants = PidConstants {
+        kp: 10.0,
+        ki: 0.0,
+        kd: 40.0,
+        p_limit: 5.0,
+        i_limit: 0.0,
+        d_limit: 5.0,
     };
 
-    let speed: f64 = rosrust::param("~speed").unwrap().get()?;
-    let speed = Float64 { data: speed };
-
     // Setup controller
-    let controller = steering::SteeringPidController::new(path, pid_constants);
+    let mut controller = SteeringPidController::new(path, pid_constants);
 
-    // Create publishers
-    let drivetrain_pub = rosrust::publish("/tiger_car/control/drivetrain", 100)?;
-    let steering_pub = rosrust::publish("/tiger_car/control/steering", 100)?;
+    // Setup publisher
+    let steering_pub = rosrust::publish("/tiger_car/steer", 100)?;
 
-    // Register Subscriber
-    rosrust::subscribe(
-        "amcl_pose",
-        100,
-        move |pose: PoseWithCovarianceStamped| {
-            
-            rosrust::ros_info!("Pose Received: {:?}", pose);
-            
-            let steering = controller.update(pose);
+    // Listen for transforms
+    let listener = TfListener::new();
+    let rate = rosrust::rate(100.0);
+    let mut last_tf = TransformStamped::default();
 
-            drivetrain_pub.send(speed.clone()).unwrap();
-            steering_pub.send(steering).unwrap();
+    std::thread::sleep(std::time::Duration::new(1, 0));
+
+    while rosrust::is_ok() {
+
+        // Get updated odom transform
+        let tf = listener.lookup_transform("map", "base_front", Time::new()).unwrap(); // Probably shouldn't unwrap this
+
+        if tf != last_tf {
+
+            // Save old last tf
+            last_tf = tf.clone();
+
+            // Determine new output from controller
+            let output = controller.update_tf(tf);
+
+            // Publish new control output
+            steering_pub.send(output)?;
         }
-    )?;
+
+        // Sleep to maintain rate
+        rate.sleep();
+    }
 
     // Breaks when a shutdown signal is sent
     rosrust::spin();
