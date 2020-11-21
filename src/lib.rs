@@ -75,9 +75,6 @@ pub fn run() -> Result<()> {
         rate.sleep();
     }
 
-    // Breaks when a shutdown signal is sent
-    rosrust::spin();
-
     Ok(())
 }
 

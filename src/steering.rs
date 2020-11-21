@@ -21,6 +21,7 @@ pub struct PidConstants {
 
 pub struct SteeringPidController {
     path: Path,
+    next_idx: usize,
     pid: Pid<f64>,
 }
 
@@ -29,7 +30,7 @@ impl SteeringPidController {
     /// Create a new controller
     pub fn new(path: Path, c: PidConstants) -> Self {
         let pid = Pid::new(c.kp, c.ki, c.kd, c.p_limit, c.i_limit, c.d_limit, 0.0);
-        Self { path, pid}
+        Self { path, next_idx: 1, pid}
     }
 
     /// Determine the Steering output based on a map->baselink tf
@@ -74,9 +75,65 @@ impl SteeringPidController {
     }
 
     /// Calulate the error of the robots location in relation to the path
-    fn calc_error(&self, pose: &PoseStamped) -> Option<f64> {
-        let pair = self.find_closest_pair(pose)?;
+    fn calc_error(&mut self, pose: &PoseStamped) -> Option<f64> {
+        let pair = self.find_next_pair(pose)?;
         Some(Self::calc_xte(pair, pose)?)
+    }
+
+    fn find_next_pair(&mut self, pose: &PoseStamped) -> Option<(&PoseStamped, &PoseStamped)> {
+        if self.path.poses.len() < 2 {
+            None
+        } else {
+
+            let mut prev = &self.path.poses[self.decrement_idx_wrap(self.next_idx)];
+            let mut next = &self.path.poses[self.next_idx];
+            
+            while Self::passed_next(prev, next, pose) {
+                self.next_idx = self.increment_idx_wrap(self.next_idx);
+                prev = &self.path.poses[self.decrement_idx_wrap(self.next_idx)];
+                next = &self.path.poses[self.next_idx];
+            }
+
+            Some((prev, next))
+        }
+    }
+
+    /// Returns true when pose is passed the perpendicular line to prev->next that intersects point next
+    fn passed_next(prev :&PoseStamped, next: &PoseStamped, pose: &PoseStamped) -> bool {
+
+        // Define points
+        let a = (prev.pose.position.x, prev.pose.position.y);
+        let b = (next.pose.position.x, next.pose.position.y);
+        let c = (pose.pose.position.x, pose.pose.position.y);
+
+        // Center point b at the origin
+        let a = (a.0 - b.0, a.1 - b.1);
+        let c = (c.0 - b.0, c.1 - b.1);
+
+        // Find the angles that b and c make with the x-axis
+        let theta_a = f64::atan2(a.1, a.0);
+        let theta_c = f64::atan2(c.1, c.0);
+
+        // Compare angles to determine the order
+        !Self::direction(theta_a, theta_c)
+    }
+
+    /// Increment idx but overflow at the length of the path
+    fn increment_idx_wrap(&self, idx: usize) -> usize {
+        if idx + 1 < self.path.poses.len() {
+            idx + 1
+        } else {
+            0
+        }
+    }
+
+    /// Decrement idx but overflow at the length of the path
+    fn decrement_idx_wrap(&self, idx: usize) -> usize {
+        if idx == 0 {
+            self.path.poses.len() - 1
+        } else {
+            idx - 1
+        }
     }
 
     /// Find the consecutive pair of points with the lowest combined distance
@@ -246,15 +303,6 @@ mod tests {
         
         let v = vec![
             //a_x, a_y    b_x, b_y    c_x, c_y       ans
-            ((0.0, 0.0), (0.0, 0.0), (1.0, 0.0),    true),
-            ((0.0, 0.0), (0.0, 0.0), (1.0, 1.0),    true),
-            ((0.0, 0.0), (0.0, 0.0), (0.0, 1.0),    true),
-            ((0.0, 0.0), (0.0, 0.0), (-1.0, 1.0),   true),
-            ((0.0, 0.0), (0.0, 0.0), (-1.0, 0.0),   true),
-            ((0.0, 0.0), (0.0, 0.0), (-1.0, -1.0),  true),
-            ((0.0, 0.0), (0.0, 0.0), (0.0, -1.0),   true),
-            ((0.0, 0.0), (0.0, 0.0), (1.0, -1.0),   true),
-
             ((0.0, 0.0), (1.0, 0.0), (1.0, 0.0),    true),
             ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0),    true),
             ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0),    true),
