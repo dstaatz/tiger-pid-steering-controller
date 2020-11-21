@@ -1,7 +1,7 @@
 /* Copyright (C) 2020 Dylan Staatz - All Rights Reserved. */
 
 
-use pid::{Pid, ControlOutput};
+use pid::Pid;
 
 use rosrust_msg::std_msgs::{Float64, Header};
 use rosrust_msg::nav_msgs::Path;
