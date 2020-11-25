@@ -1,3 +1,3 @@
-# tiger-pid-steering-controller-ros
+# tiger-pid-steering-controller
 
-TODO
+An ROS node that provides steering control for the emerald-tiger project.
